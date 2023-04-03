@@ -16,36 +16,64 @@ namespace DemoCube
     public partial class Form1 : Form
     {
         Cube cube;
+        Programm program;
+        Matrix4 projection;
+        Matrix4 view;
         public Form1()
         {
             InitializeComponent();
         }
 
+        private void SetMatrixUniform(ref Matrix4 matrix,string name)
+        {
+            var location = GL.GetUniformLocation(program.Id, name);
+            GL.UniformMatrix4(location, false,ref matrix);
+        }
+
+        private void SetUniformColor(ref Color color)
+        {
+            int location = GL.GetUniformLocation(program.Id, "color");
+            GL.Uniform3(location, (float)color.R / 255, (float)color.G / 255, (float)color.B / 255);
+        }
+
         private void OnPaint(object sender, PaintEventArgs e)
         {
+            view = Matrix4.LookAt(new Vector3(0.0f, 0.0f, 20.0f),Vector3.Zero,Vector3.UnitY);
+            projection = Matrix4.CreatePerspectiveFieldOfView((float)Math.PI / 3, (float)glCanvas.Size.Width / glCanvas.Size.Height, 0.1f, 32.0f);
             GL.Viewport(0, 0, glCanvas.Width, glCanvas.Height);
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+            program.UseProgram();
+            SetMatrixUniform(ref cube.Model, "model");
+            SetMatrixUniform(ref view, "view");
+            SetMatrixUniform(ref projection, "proj");
+            SetUniformColor(ref cube.Color);
+            cube.Render();
             glCanvas.SwapBuffers();
         }
 
         private void OnLoad(object sender, EventArgs e)
         {
+            GL.Enable(EnableCap.DepthTest);
             GL.ClearColor(Color.Cyan);
             cube = new Cube();
+            program = new Programm();
         }
 
         private void OnClosing(object sender, FormClosingEventArgs e)
         {
             cube.FreeBuffers();
+            program.FreeProgramm();
         }
     }
 
     public class Cube
     {
         const float side = 10.0f;
-        const float initAngle = 7 * (float)Math.PI / 4;
+        const float initAngle = 0;
         const float offsetAngle = (float)Math.PI / 2;
         const int totalPoints = 6 * 4;
+        Matrix4 model;
+        Color color;
         int vao;
         int vbo;
         int ebo;
@@ -60,6 +88,8 @@ namespace DemoCube
             FillFaces(up, points, indices);
             FillFaces(down, points, indices, 0, 4);
             FillFaces(faces, points, indices, 0, 8);
+            model = Matrix4.Identity;
+            color = Color.Orange;
             vao = GL.GenVertexArray();
             vbo = GL.GenBuffer();
             ebo = GL.GenBuffer();
@@ -74,6 +104,15 @@ namespace DemoCube
             GL.EnableVertexAttribArray(1);
         }
 
+        public ref Matrix4 Model { get { return ref model; } }
+        public ref Color Color { get { return ref color; } }
+
+        public void Render()
+        {
+            GL.BindVertexArray(vao);
+            GL.DrawElements(BeginMode.Triangles, 36, DrawElementsType.UnsignedInt, 0);
+            GL.BindVertexArray(0);
+        }
         public void FreeBuffers()
         {
             GL.BindVertexArray(0);
@@ -138,4 +177,86 @@ namespace DemoCube
         }
     }
 
+    public class Programm
+    {
+        int programm;
+        int vs;
+        int fs;
+        public Programm()
+        {
+            programm = GL.CreateProgram();
+            CreateShader();
+            CreateShader(false);
+            GL.AttachShader(programm, vs);
+            GL.AttachShader(programm, fs);
+            GL.LinkProgram(programm);    
+        }
+
+        public int Id { get { return programm; } }
+
+        public void UseProgram() => GL.UseProgram(programm);
+
+        public void FreeProgramm()
+        {
+            GL.DeleteShader(vs);
+            GL.DeleteShader(fs);
+            GL.DetachShader(programm, vs);
+            GL.DetachShader(programm, fs);
+            GL.DeleteProgram(programm);
+        }
+
+        private void SetVertexShader(ref string shader)
+        {
+            shader = "#version 330 core\n" +
+                     "layout(location = 0) in vec3 pos;\n" +
+                     "layout(location = 1) in vec3 norm;\n" +
+                     "out vec3 oNorm;\n" +
+                     "out vec3 fragPos;\n" +
+                     "uniform mat4 model;\n" +
+                     "uniform mat4 view;\n" +
+                     "uniform mat4 proj;\n" +
+                     "void main(){\n" +
+                     "oNorm = norm;\n" +
+                     "fragPos = vec3(model * vec4(pos, 1.0));\n" +
+                     "gl_Position = proj * view * vec4(fragPos, 1.0);}";
+        }
+
+        private void SetFragmentShader(ref string shader)
+        {
+            shader = "#version 330 core\n"+
+                     "in vec3 oNorm;\n"+
+                     "in vec3 fragPos;\n"+
+                     "out vec4 fragColor;\n" +
+                     "uniform vec3 color;\n" +
+                     "const vec3 lightPos = vec3(0.0,0.0,10.0);\n" +
+                     "const vec3 lightColor = vec3(1.0,1.0,1.0);\n" +
+                     "const float ambK = 0.1;\n" +
+                     "void main(){\n" +
+                     "vec3 norm = normalize(oNorm);\n" +
+                     "vec3 dirLight = normalize(lightPos - fragPos);\n" +
+                     "float diff = max(dot(norm, dirLight), 0.0);\n" +
+                     "vec3 diffuse = diff * lightColor;\n" +
+                     "vec3 ambient =  ambK * lightColor;\n"+
+                     "vec3 ou = (diffuse + ambient) * color;\n"+
+                     "fragColor = vec4(ou,1.0);}";
+        }
+
+        private void CreateShader(bool isVertexShader = true)
+        {
+            int shader = GL.CreateShader(isVertexShader ? ShaderType.VertexShader : ShaderType.FragmentShader);
+            string data = "";
+            if (isVertexShader)
+            {
+                vs = shader;
+                SetVertexShader(ref data);
+            }
+            else
+            {
+                fs = shader;
+                SetFragmentShader(ref data);
+            }
+            GL.ShaderSource(shader, data);
+            GL.CompileShader(shader);
+        }
+    }
 }

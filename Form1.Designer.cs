@@ -40,9 +40,9 @@
             | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
             this.glCanvas.BackColor = System.Drawing.Color.Black;
-            this.glCanvas.Location = new System.Drawing.Point(231, 3);
+            this.glCanvas.Location = new System.Drawing.Point(159, 3);
             this.glCanvas.Name = "glCanvas";
-            this.glCanvas.Size = new System.Drawing.Size(575, 461);
+            this.glCanvas.Size = new System.Drawing.Size(647, 461);
             this.glCanvas.TabIndex = 0;
             this.glCanvas.VSync = false;
             this.glCanvas.Load += new System.EventHandler(this.OnLoad);
@@ -51,8 +51,8 @@
             // tableLayoutPanel1
             // 
             this.tableLayoutPanel1.ColumnCount = 2;
-            this.tableLayoutPanel1.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 28.25F));
-            this.tableLayoutPanel1.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 71.75F));
+            this.tableLayoutPanel1.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 19.28307F));
+            this.tableLayoutPanel1.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 80.71693F));
             this.tableLayoutPanel1.Controls.Add(this.glCanvas, 1, 0);
             this.tableLayoutPanel1.Controls.Add(this.groupBox1, 0, 0);
             this.tableLayoutPanel1.Dock = System.Windows.Forms.DockStyle.Fill;
@@ -70,7 +70,7 @@
             | System.Windows.Forms.AnchorStyles.Right)));
             this.groupBox1.Location = new System.Drawing.Point(3, 3);
             this.groupBox1.Name = "groupBox1";
-            this.groupBox1.Size = new System.Drawing.Size(222, 461);
+            this.groupBox1.Size = new System.Drawing.Size(150, 461);
             this.groupBox1.TabIndex = 1;
             this.groupBox1.TabStop = false;
             this.groupBox1.Text = "Управление:";
