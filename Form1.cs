@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.ComponentModel;
 using System.Data;
 using System.Drawing;
@@ -16,53 +18,125 @@ namespace DemoCube
     public partial class Form1 : Form
     {
         Cube cube;
-        Programm program;
+        Programs program;
         Matrix4 projection;
         Matrix4 view;
+        readonly string[] btnShadeMode = {"Закрашенный", "Контур", "Оба"};
+        readonly string[] btnLightMode = {"Вкл.Освещение", "Выкл.Освещение"};
+        int btnShadeCurrent;
+        int btnLightCurrent;
+
         public Form1()
         {
             InitializeComponent();
         }
 
-        private void SetMatrixUniform(ref Matrix4 matrix,string name)
+        private void SetMatrixUniform(ref Matrix4 matrix, string programName, string name)
         {
-            var location = GL.GetUniformLocation(program.Id, name);
+            var location = GL.GetUniformLocation(program[programName], name);
             GL.UniformMatrix4(location, false,ref matrix);
         }
 
-        private void SetUniformColor(ref Color color)
+        private void SetUniformLighting(uint isEnable, string programName)
         {
-            int location = GL.GetUniformLocation(program.Id, "color");
+            int location = GL.GetUniformLocation(program[programName], "lightOn");
+            GL.Uniform1(location, isEnable);
+        }
+
+        private void SetUniformColor(Color color, string programName)
+        {
+            int location = GL.GetUniformLocation(program[programName], "color");
             GL.Uniform3(location, (float)color.R / 255, (float)color.G / 255, (float)color.B / 255);
+        }
+
+        private void SetUniformAlpha(float value, string programName)
+        {
+            int location = GL.GetUniformLocation(program[programName], "alpha");
+            GL.Uniform1(location, value);
+        }
+
+        private void Render(string mode)
+        {
+            program.UseProgram(mode);
+            SetMatrixUniform(ref cube.Model, mode, "model");
+            SetMatrixUniform(ref view, mode, "view");
+            SetMatrixUniform(ref projection, mode, "proj");
+            SetUniformAlpha(float.Parse(alphaValue.Text), mode);
+            if (mode == "Shaded")
+            {
+                SetUniformLighting((uint)btnLightCurrent, mode);
+                SetUniformColor(cube.Color, mode);
+            }
+            else
+                SetUniformColor(Color.Black, mode);
+            cube.Render(mode);
         }
 
         private void OnPaint(object sender, PaintEventArgs e)
         {
+            var shadeMode = btnShadeMode[btnShadeCurrent];
             view = Matrix4.LookAt(new Vector3(0.0f, 0.0f, 20.0f),Vector3.Zero,Vector3.UnitY);
             projection = Matrix4.CreatePerspectiveFieldOfView((float)Math.PI / 3, (float)glCanvas.Size.Width / glCanvas.Size.Height, 0.1f, 32.0f);
             GL.Viewport(0, 0, glCanvas.Width, glCanvas.Height);
             GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-            program.UseProgram();
-            SetMatrixUniform(ref cube.Model, "model");
-            SetMatrixUniform(ref view, "view");
-            SetMatrixUniform(ref projection, "proj");
-            SetUniformColor(ref cube.Color);
-            cube.Render();
+            if (trackAlpha.Value != 100)
+                GL.DepthFunc(DepthFunction.Always);
+            else
+                GL.DepthFunc(DepthFunction.Lequal);
+            if (shadeMode == "Закрашенный" || shadeMode == "Оба")
+                Render("Shaded");
+            if (shadeMode == "Контур" || shadeMode == "Оба")
+                Render("Wireframe");
             glCanvas.SwapBuffers();
         }
 
         private void OnLoad(object sender, EventArgs e)
         {
             GL.Enable(EnableCap.DepthTest);
+            GL.Enable(EnableCap.Blend);
+            GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
             GL.ClearColor(Color.Cyan);
             cube = new Cube();
-            program = new Programm();
+            cube.Color = colorChoice.Color;
+            program = new Programs();
+            var status = program.CreateProgram("Shaded", Shader.VertexShadedShader, Shader.FragmentShadedShader);
+            if(!status || !program.CreateProgram("Wireframe", Shader.VertexWireShader, Shader.FragmentWireShader))
+                Close();
         }
 
         private void OnClosing(object sender, FormClosingEventArgs e)
         {
             cube.FreeBuffers();
-            program.FreeProgramm();
+            program.FreePrograms();
+        }
+
+        private void OnShadeClick(object sender, EventArgs e)
+        {
+            btnShadeCurrent = (btnShadeCurrent + 1) % 3;
+            var button = sender as Button;
+            button.Text = btnShadeMode[btnShadeCurrent];
+            glCanvas.Invalidate();
+        }
+
+        private void OnLightClick(object sender, EventArgs e)
+        {
+            btnLightCurrent = (btnLightCurrent + 1) % 2;
+            var button = sender as Button;
+            button.Text = btnLightMode[btnLightCurrent];
+            glCanvas.Invalidate();
+        }
+
+        private void OnChange(object sender, EventArgs e)
+        {
+            alphaValue.Text = ((sender as TrackBar).Value * 0.01f).ToString();
+            glCanvas.Invalidate();
+        }
+
+        private void ColorChoice(object sender, EventArgs e)
+        {
+            colorChoice.ShowDialog();
+            sideColor.BackColor = cube.Color = colorChoice.Color;
+            glCanvas.Invalidate();
         }
     }
 
@@ -74,9 +148,15 @@ namespace DemoCube
         const int totalPoints = 6 * 4;
         Matrix4 model;
         Color color;
-        int vao;
-        int vbo;
-        int ebo;
+        int shadedVao;
+        int shadedVbo;
+        int shadedEbo;
+        int wireVao;
+        int wireVbo;
+
+        public ref Matrix4 Model { get { return ref model; } }
+        public ref Color Color { get { return ref color; } }
+
         public Cube(Vector3 origin = new Vector3())
         {
             var points = new List<Vector3>(totalPoints * 2);
@@ -89,37 +169,93 @@ namespace DemoCube
             FillFaces(down, points, indices, 0, 4);
             FillFaces(faces, points, indices, 0, 8);
             model = Matrix4.Identity;
-            color = Color.Orange;
-            vao = GL.GenVertexArray();
-            vbo = GL.GenBuffer();
-            ebo = GL.GenBuffer();
-            GL.BindVertexArray(vao);
-            GL.BindBuffer(BufferTarget.ArrayBuffer, vbo);
+            BindShadedBuffer(points, indices);
+            BindWireframeBuffer(up, down);
+        }
+
+        public void Render(string mode)
+        {
+            if (mode == "Shaded")
+            {
+                GL.BindVertexArray(shadedVao);
+                GL.DrawElements(PrimitiveType.Triangles, 36, DrawElementsType.UnsignedInt, 0);
+            }
+            else if (mode == "Wireframe")
+            {
+                GL.BindVertexArray(wireVao);
+                GL.DrawArrays(PrimitiveType.Lines, 0, 24);
+            }
+            GL.BindVertexArray(0);
+        }
+
+        public void FreeBuffers()
+        {
+            GL.BindVertexArray(0);
+            GL.DeleteVertexArray(shadedVao);
+            GL.DeleteVertexArray(wireVao);
+            GL.DeleteBuffer(wireVbo);
+            GL.DeleteBuffer(shadedVbo);
+            GL.DeleteBuffer(shadedEbo);
+        }
+
+        private List<Vector3> CreateLines(List<Vector3> src)
+        {
+            List<Vector3> points = new List<Vector3>();
+            for(var i = 0; i < 4; ++i)
+            {
+                points.Add(src[i]);
+                if (i != 0)
+                    points.Add(src[i]);
+            }
+            points.Add(src[0]);
+            return points;
+        }
+
+        private List<Vector3> CreateVerticalLines(List<Vector3> up, List<Vector3> down)
+        {
+            List<Vector3> points = new List<Vector3>();
+            for (var i = 0; i < 4; ++i)
+            {
+                points.Add(up[i]);
+                if ((i & 1) == 0)
+                    points.Add(down[i]);
+                else
+                {
+                    var index = i == 1 ? 3 : 1;
+                    points.Add(down[index]);
+                }
+            }
+            return points;
+        }
+
+        private void BindWireframeBuffer(List<Vector3> up, List<Vector3> down)
+        {
+            var points = CreateVerticalLines(up, down);
+            points.AddRange(CreateLines(up));
+            points.AddRange(CreateLines(down));
+            wireVao = GL.GenVertexArray();
+            wireVbo = GL.GenBuffer();
+            GL.BindVertexArray(wireVao);
+            GL.BindBuffer(BufferTarget.ArrayBuffer, wireVbo);
             GL.BufferData<Vector3>(BufferTarget.ArrayBuffer, points.Count * sizeof(float) * 3, points.ToArray(), BufferUsageHint.StaticDraw);
-            GL.BindBuffer(BufferTarget.ElementArrayBuffer, ebo);
-            GL.BufferData<uint>(BufferTarget.ElementArrayBuffer, indices.Count * sizeof(uint),indices.ToArray(), BufferUsageHint.StreamDraw);
+            GL.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 0, 0);
+            GL.EnableVertexAttribArray(0);
+        }
+
+        private void BindShadedBuffer(List<Vector3> points, List<uint> indices)
+        {
+            shadedVao = GL.GenVertexArray();
+            shadedVbo = GL.GenBuffer();
+            shadedEbo = GL.GenBuffer();
+            GL.BindVertexArray(shadedVao);
+            GL.BindBuffer(BufferTarget.ArrayBuffer, shadedVbo);
+            GL.BufferData<Vector3>(BufferTarget.ArrayBuffer, points.Count * sizeof(float) * 3, points.ToArray(), BufferUsageHint.StaticDraw);
+            GL.BindBuffer(BufferTarget.ElementArrayBuffer, shadedEbo);
+            GL.BufferData<uint>(BufferTarget.ElementArrayBuffer, indices.Count * sizeof(uint), indices.ToArray(), BufferUsageHint.StreamDraw);
             GL.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, sizeof(float) * 6, 0);
             GL.EnableVertexAttribArray(0);
             GL.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, sizeof(float) * 6, 3 * sizeof(float));
             GL.EnableVertexAttribArray(1);
-        }
-
-        public ref Matrix4 Model { get { return ref model; } }
-        public ref Color Color { get { return ref color; } }
-
-        public void Render()
-        {
-            GL.BindVertexArray(vao);
-            GL.DrawElements(BeginMode.Triangles, 36, DrawElementsType.UnsignedInt, 0);
-            GL.BindVertexArray(0);
-        }
-        public void FreeBuffers()
-        {
-            GL.BindVertexArray(0);
-            GL.DeleteVertexArray(vao);
-            GL.DeleteBuffer(vbo);
-            GL.DeleteBuffer(ebo);
-            vao = vbo = 0;
         }
 
         private void CreateFace(List<Vector3> points, ref Vector3 origin, float offsetAngle, float radius)
@@ -177,86 +313,79 @@ namespace DemoCube
         }
     }
 
-    public class Programm
+    public class Programs
     {
-        int programm;
-        int vs;
-        int fs;
-        public Programm()
+        Hashtable programs;
+        public delegate void ShaderFun(ref string data);
+        public Programs()
         {
-            programm = GL.CreateProgram();
-            CreateShader();
-            CreateShader(false);
-            GL.AttachShader(programm, vs);
-            GL.AttachShader(programm, fs);
-            GL.LinkProgram(programm);    
+            programs = new Hashtable(); 
         }
 
-        public int Id { get { return programm; } }
-
-        public void UseProgram() => GL.UseProgram(programm);
-
-        public void FreeProgramm()
+        public int this [string key]
         {
-            GL.DeleteShader(vs);
-            GL.DeleteShader(fs);
-            GL.DetachShader(programm, vs);
-            GL.DetachShader(programm, fs);
-            GL.DeleteProgram(programm);
+            get => ((Tuple<int,int,int>)programs[key]).Item1;
         }
 
-        private void SetVertexShader(ref string shader)
-        {
-            shader = "#version 330 core\n" +
-                     "layout(location = 0) in vec3 pos;\n" +
-                     "layout(location = 1) in vec3 norm;\n" +
-                     "out vec3 oNorm;\n" +
-                     "out vec3 fragPos;\n" +
-                     "uniform mat4 model;\n" +
-                     "uniform mat4 view;\n" +
-                     "uniform mat4 proj;\n" +
-                     "void main(){\n" +
-                     "oNorm = norm;\n" +
-                     "fragPos = vec3(model * vec4(pos, 1.0));\n" +
-                     "gl_Position = proj * view * vec4(fragPos, 1.0);}";
-        }
+        public void UseProgram(string key) => GL.UseProgram(((Tuple<int,int,int>)programs[key]).Item1);
 
-        private void SetFragmentShader(ref string shader)
+        public void FreePrograms()
         {
-            shader = "#version 330 core\n"+
-                     "in vec3 oNorm;\n"+
-                     "in vec3 fragPos;\n"+
-                     "out vec4 fragColor;\n" +
-                     "uniform vec3 color;\n" +
-                     "const vec3 lightPos = vec3(0.0,0.0,10.0);\n" +
-                     "const vec3 lightColor = vec3(1.0,1.0,1.0);\n" +
-                     "const float ambK = 0.1;\n" +
-                     "void main(){\n" +
-                     "vec3 norm = normalize(oNorm);\n" +
-                     "vec3 dirLight = normalize(lightPos - fragPos);\n" +
-                     "float diff = max(dot(norm, dirLight), 0.0);\n" +
-                     "vec3 diffuse = diff * lightColor;\n" +
-                     "vec3 ambient =  ambK * lightColor;\n"+
-                     "vec3 ou = (diffuse + ambient) * color;\n"+
-                     "fragColor = vec4(ou,1.0);}";
-        }
-
-        private void CreateShader(bool isVertexShader = true)
-        {
-            int shader = GL.CreateShader(isVertexShader ? ShaderType.VertexShader : ShaderType.FragmentShader);
-            string data = "";
-            if (isVertexShader)
+            foreach(DictionaryEntry entry in programs)
             {
-                vs = shader;
-                SetVertexShader(ref data);
+                var program = entry.Value as Tuple<int, int, int>;
+                GL.DeleteShader(program.Item2);
+                GL.DeleteShader(program.Item3);
+                GL.DetachShader(program.Item1, program.Item2);
+                GL.DetachShader(program.Item1, program.Item3);
+                GL.DeleteProgram(program.Item1);
             }
-            else
+        }
+
+        public bool CreateProgram(string key, ShaderFun vertFun, ShaderFun fragFun)
+        {
+            var program = GL.CreateProgram();
+            var vertex = GL.CreateShader(ShaderType.VertexShader);
+            var fragment = GL.CreateShader(ShaderType.FragmentShader);
+            var shader = "";
+            var status = CreateShader(vertex, vertFun, ref shader);
+            if (status)
             {
-                fs = shader;
-                SetFragmentShader(ref data);
+                status = CreateShader(fragment, fragFun, ref shader);
+                if (status)
+                {
+                    GL.AttachShader(program, vertex);
+                    GL.AttachShader(program, fragment);
+                    GL.LinkProgram(program);
+                    programs[key] = Tuple.Create(program, vertex, fragment);
+                }
             }
+            return status;
+        }
+
+        private bool CreateShader(int shader, ShaderFun shaderFun,  ref string data)
+        {
+            var status = true;
+            shaderFun(ref data);
             GL.ShaderSource(shader, data);
             GL.CompileShader(shader);
+            if (GL.GetError() != ErrorCode.NoError)
+            {
+                GL.GetShaderInfoLog(shader, out data);
+                status = false;
+            }
+            return status;
+        }
+    }
+
+    public class ErrorLog
+    {
+        public ErrorLog(ref string message)
+        {
+            using (StreamWriter writer = new StreamWriter("errorLog.txt"))
+            {
+                writer.WriteLine(message);
+            }
         }
     }
 }
