@@ -56,7 +56,7 @@ namespace DemoCube
                       "uniform float alpha;\n" +
                       "const vec3 lightPos = vec3(0.0,0.0,10.0);\n" +
                       "const vec3 lightColor = vec3(1.0,1.0,1.0);\n" +
-                      "const float ambK = 0.1;\n" +
+                      "const float ambK = 0.4;\n" +
                       "void main(){\n" +
                       "vec3 outColor = color;\n"+
                       "if(lightOn == 1){\n"+
