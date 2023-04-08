@@ -13,7 +13,6 @@ namespace DemoCube
         Vector3 target;
         float yaw;
         float pitch;
-        float radius;
         float near;
         float far;
         float fov;
@@ -27,7 +26,6 @@ namespace DemoCube
             this.position = position;
             this.target = target;
             var vector = position - target;
-            radius = vector.Length;
             vector.Normalize();
             pitch = (float)Math.Acos(Vector3.Dot(vector, Vector3.UnitZ));
             yaw = (float)Math.Acos(Vector3.Dot(vector, Vector3.UnitX));
@@ -45,48 +43,56 @@ namespace DemoCube
             {
                 var newPosition = Vector3.Lerp(position, target, Math.Abs(offset));
                 if (Vector3.Dot(position, newPosition) > 0)
-                {
                     position = newPosition;
-                    radius = position.Length;
-                }
             }
             else
             {
                 var newPosition = (position - target) * (1 - offset);
                 if (newPosition.Length + 5.0f <= far)
-                {
                     position = newPosition;
-                    radius = position.Length;
-                }
             }
         }
 
         public void Update(ref Point start, ref Point end)
         {
-            if(enableRotate)
-            {
-                float yDelta = -(end.Y - start.Y) * 2;
-                float xDelta = (end.X - start.X) * 2;
-                yDelta = yDelta / canvas.Height * (float)Math.PI;
-                xDelta = xDelta / canvas.Width * 2 * (float)Math.PI;
-                if (Math.Abs(pitch + yDelta) > Math.PI / 2)
-                    pitch -= yDelta;
-                else
-                    pitch += yDelta;
-                if (yaw + xDelta > 2 * Math.PI)
-                    yaw = xDelta;
-                else if (yaw + xDelta < 0)
-                    yaw = 2 * (float)Math.PI + xDelta;
-                else
-                    yaw += xDelta;
-                Vector3 dir = Vector3.Zero;
-                dir.X = (float)(Math.Cos(yaw) * Math.Cos(pitch));
-                dir.Y = (float)(Math.Sin(pitch));
-                dir.Z = (float)(Math.Cos(pitch) * -Math.Sin(yaw));
-                dir.Normalize();
-                position = -dir * radius;
-            }
-            UpdateMatrices();
+            if (enableRotate)
+                UpdateAngles(ref start, ref end);
+            CreateViewMatrix();
+            projection = Matrix4.CreatePerspectiveFieldOfView(fov, canvas.AspectRatio, near, far);
+        }
+
+        private void UpdateAngle(ref float angle)
+        {
+            if (angle > 2 * Math.PI)
+                angle = angle - 2 * (float)Math.PI;
+            else if (angle < 0)
+                angle = 2 * (float)Math.PI + angle;
+        }
+
+        private void UpdateAngles(ref Point start, ref Point end)
+        {
+            float yDelta = -(end.Y - start.Y) * 2;
+            float xDelta = (end.X - start.X) * 2;
+            yDelta = yDelta / canvas.Height * 2 * (float)Math.PI;
+            xDelta = xDelta / canvas.Width * 2 * (float)Math.PI;
+            yaw += xDelta;
+            pitch += yDelta;
+            UpdateAngle(ref pitch);
+            UpdateAngle(ref yaw);
+        }
+
+        private void CreateViewMatrix()
+        {
+            var yDelta = (float)Math.PI - pitch;
+            var xDelta = (float)Math.PI / 2 + yaw;
+            var newPitch = new Quaternion(yDelta, 0.0f, 0.0f);
+            var newYaw = new Quaternion(0.0f, xDelta, 0.0f);
+            var newView = Matrix3.CreateFromQuaternion(newYaw * newPitch);
+            newView.Transpose();
+            view = new Matrix4(newView);
+            view[3, 0] = -(position + target).X;
+            view[3, 1] = -(position + target).Y;
+            view[3, 2] = -(position + target).Z;
         }
 
         private void UpdateMatrices()
