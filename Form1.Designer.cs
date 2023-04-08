@@ -39,6 +39,7 @@
             this.lightBtn = new System.Windows.Forms.Button();
             this.shadeBtn = new System.Windows.Forms.Button();
             this.colorChoice = new System.Windows.Forms.ColorDialog();
+            this.info = new System.Windows.Forms.TextBox();
             this.tableLayoutPanel1.SuspendLayout();
             this.groupBox1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.trackAlpha)).BeginInit();
@@ -81,6 +82,7 @@
             this.groupBox1.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
             | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
+            this.groupBox1.Controls.Add(this.info);
             this.groupBox1.Controls.Add(this.alphaValue);
             this.groupBox1.Controls.Add(this.alphaLabel);
             this.groupBox1.Controls.Add(this.trackAlpha);
@@ -173,6 +175,17 @@
             // 
             this.colorChoice.Color = System.Drawing.Color.DarkGray;
             // 
+            // info
+            // 
+            this.info.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.info.Location = new System.Drawing.Point(6, 327);
+            this.info.Multiline = true;
+            this.info.Name = "info";
+            this.info.Size = new System.Drawing.Size(138, 128);
+            this.info.TabIndex = 7;
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
@@ -204,6 +217,7 @@
         private System.Windows.Forms.TrackBar trackAlpha;
         private System.Windows.Forms.Label alphaValue;
         private System.Windows.Forms.Label alphaLabel;
+        private System.Windows.Forms.TextBox info;
     }
 }
 
